@@ -1,28 +1,39 @@
-"use client"
-import { useState, useRef } from 'react';
+"use client";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Textarea } from "@/components/ui/textarea";
-import { PhoneIcon, PlusIcon, SendIcon, ShareIcon, VideoIcon, MicIcon, BotIcon } from "lucide-react";
+import {
+    PhoneIcon,
+    PlusIcon,
+    SendIcon,
+    ShareIcon,
+    VideoIcon,
+    MicIcon,
+    BotIcon,
+} from "lucide-react";
 import useAuth from "@/lib/useAuth";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import * as posedetection from "@tensorflow-models/pose-detection";
+import * as tf from "@tensorflow/tfjs";
+import Sentiment from "sentiment";
 
 export default function Component() {
     const [cameraOn, setCameraOn] = useState(false);
+    const [sentimentScore, setSentimentScore] = useState(null);
     const videoRef = useRef(null);
+    const [pose, setPose] = useState(null);
 
     const handleCameraToggle = async () => {
         if (cameraOn) {
-            // Turn off the camera
             if (videoRef.current && videoRef.current.srcObject) {
                 const tracks = videoRef.current.srcObject.getTracks();
-                tracks.forEach(track => track.stop());
+                tracks.forEach((track) => track.stop());
                 videoRef.current.srcObject = null;
             }
         } else {
-            // Turn on the camera
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true });
                 if (videoRef.current) {
@@ -34,6 +45,44 @@ export default function Component() {
         }
         setCameraOn(!cameraOn);
     };
+
+    useEffect(() => {
+        const loadPoseDetection = async () => {
+            await tf.ready();
+            const detectorConfig = {
+                modelType: posedetection.movenet.modelType.SINGLEPOSE_THUNDER,
+            };
+            const detector = await posedetection.createDetector(
+                posedetection.SupportedModels.MoveNet,
+                detectorConfig
+            );
+
+            const detectPose = async () => {
+                if (videoRef.current) {
+                    const poses = await detector.estimatePoses(videoRef.current);
+                    if (poses && poses.length > 0) {
+                        setPose(poses[0]);
+                    }
+                    requestAnimationFrame(detectPose);
+                }
+            };
+            detectPose();
+        };
+        if (cameraOn) {
+            loadPoseDetection();
+        }
+    }, [cameraOn]);
+
+    useEffect(() => {
+        const analyzeSentiment = () => {
+            const sentiment = new Sentiment();
+            const text = "Hey everyone, can you hear me?"; // Replace this with your text source
+            const result = sentiment.analyze(text);
+            setSentimentScore(result.score);
+        };
+        analyzeSentiment();
+    }, []);
+
     const router = useRouter();
     const user = useAuth();
     const handleSignOut = async () => {
@@ -104,10 +153,19 @@ export default function Component() {
                 <div className="flex-1 w-full flex mt-20 justify-center">
                     <div className="flex w-[80vw] lg:w-[70vw] h-[60vh] gap-4">
                         <div className="relative aspect-video bg-gray-900 rounded-lg overflow-hidden">
-                            <img src="/aiagent.jpg" alt="Participant" className="object-cover w-full h-full" />
-                            <div className="absolute bottom-2 left-2 bg-black/50 rounded-md px-2 py-1 text-white text-sm">John Doe</div>
+                            <img
+                                src="/aiagent.jpg"
+                                alt="Participant"
+                                className="object-cover w-full h-full"
+                            />
+                            <div className="absolute bottom-2 left-2 bg-black/50 rounded-md px-2 py-1 text-white text-sm">
+                                John Doe
+                            </div>
                         </div>
-                        <div id="Camera" className="relative aspect-video bg-gray-900 rounded-lg overflow-hidden">
+                        <div
+                            id="Camera"
+                            className="relative aspect-video bg-gray-900 rounded-lg overflow-hidden"
+                        >
                             <video ref={videoRef} autoPlay className="object-cover w-full h-full"></video>
                             <div className="absolute bottom-2 left-2 bg-black/50 rounded-md px-2 py-1 text-white text-sm">
                                 Jane Smith
@@ -125,40 +183,41 @@ export default function Component() {
                         </div>
                         <div className="flex-1 overflow-auto">
                             <div className="p-4 space-y-4">
-                                <div className="flex items-start gap-3">
-                                    <Avatar className="w-8 h-8">
-                                        <AvatarImage src="/placeholder-user.jpg" />
-                                        <AvatarFallback>JD</AvatarFallback>
-                                    </Avatar>
-                                    <div className="flex flex-col gap-1">
-                                        <div className="font-medium">John Doe</div>
-                                        <div className="text-sm text-muted-foreground">Hey everyone, can you hear me?</div>
+                                {sentimentScore !== null && (
+                                    <div className="flex items-start gap-3">
+                                        <Avatar className="w-8 h-8">
+                                            <AvatarImage src="/placeholder-user.jpg" />
+                                            <AvatarFallback>SA</AvatarFallback>
+                                        </Avatar>
+                                        <div className="flex flex-col gap-1">
+                                            <div className="font-medium">Sentiment Analysis</div>
+                                            <div className="text-sm text-muted-foreground">
+                                                Sentiment Score: {sentimentScore}
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                                <div className="flex items-start gap-3">
-                                    <Avatar className="w-8 h-8">
-                                        <AvatarImage src="/placeholder-user.jpg" />
-                                        <AvatarFallback>JS</AvatarFallback>
-                                    </Avatar>
-                                    <div className="flex flex-col gap-1">
-                                        <div className="font-medium">Jane Smith</div>
-                                        <div className="text-sm text-muted-foreground">Yes, I can hear you loud and clear!</div>
+                                )}
+                                {pose && (
+                                    <div className="flex items-start gap-3">
+                                        <Avatar className="w-8 h-8">
+                                            <AvatarImage src="/placeholder-user.jpg" />
+                                            <AvatarFallback>PD</AvatarFallback>
+                                        </Avatar>
+                                        <div className="flex flex-col gap-1">
+                                            <div className="font-medium">Pose Detection</div>
+                                            <div className="text-sm text-muted-foreground">
+                                                Pose Detected: {JSON.stringify(pose.keypoints)}
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                                <div className="flex items-start gap-3">
-                                    <Avatar className="w-8 h-8">
-                                        <AvatarImage src="/placeholder-user.jpg" />
-                                        <AvatarFallback>BJ</AvatarFallback>
-                                    </Avatar>
-                                    <div className="flex flex-col gap-1">
-                                        <div className="font-medium">Bob Johnson</div>
-                                        <div className="text-sm text-muted-foreground">Great, let's get started!</div>
-                                    </div>
-                                </div>
+                                )}
                             </div>
                         </div>
                         <div className="flex items-center justify-between px-4 py-3 border-t">
-                            <Textarea placeholder="Type your message..." className="flex-1 bg-muted rounded-md px-3 py-2 text-sm" />
+                            <Textarea
+                                placeholder="Type your message..."
+                                className="flex-1 bg-muted rounded-md px-3 py-2 text-sm"
+                            />
                             <Button variant="ghost" size="icon">
                                 <SendIcon className="w-5 h-5" />
                             </Button>
@@ -173,7 +232,7 @@ export default function Component() {
                         variant="ghost"
                         size="icon"
                         onClick={handleCameraToggle}
-                        className={cameraOn ? 'bg-white text-black' : ''}
+                        className={cameraOn ? "bg-white text-black" : ""}
                     >
                         <VideoIcon className="w-6 h-6" />
                     </Button>
